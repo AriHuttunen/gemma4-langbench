@@ -20,34 +20,6 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv --version
 ```
 
-## Python Installation
-
-**Recommended version: Python 3.12** (compatible with Ollama, LM Studio, and Unsloth)
-
-```bash
-# Install the recommended version
-uv python install 3.12
-
-# List available Python versions
-uv python list
-
-# See installed versions
-uv python list --only-installed
-```
-
-## Common Usage
-
-```bash
-# Install a package
-uv pip install <package>
-
-# Create a virtual environment
-uv venv
-
-# Install from requirements file
-uv pip install -r requirements.txt
-```
-
 ## Resources
 
 - [Official documentation](https://docs.astral.sh/uv/)
