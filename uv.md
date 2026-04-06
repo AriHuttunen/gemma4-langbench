@@ -20,6 +20,19 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv --version
 ```
 
+## Python Installation
+
+```bash
+# List available Python versions
+uv python list
+
+# Install a specific version
+uv python install 3.12
+
+# See installed versions
+uv python list --only-installed
+```
+
 ## Common Usage
 
 ```bash
