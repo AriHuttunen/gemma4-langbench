@@ -42,11 +42,22 @@ OPENROUTER_API_KEY=sk-... uv run eval_all_langs.py --model anthropic/claude-haik
 
 ## Results
 
-**Model:** `lmstudio-community/gemma-4-E4B-it-GGUF` (`gemma-4-E4B-it-Q8_0.gguf`, 9.02 GB)
-**Method:** Generative, 0-shot, temperature 0
-**Inference:** LM Studio 0.4.9 on macOS
-**System:** Apple M2 Pro, 16 GB RAM, Metal GPU
-**Date:** 2026-04-06
+All results: generative, 0-shot, temperature 0. Prompt template and evaluation details: [belebele.md](belebele.md)
+
+### Claude Sonnet 4.6 (`anthropic/claude-sonnet-4.6` via OpenRouter)
+
+```
+Language       Done  Total  Correct  Wrong  Errors     Acc
+------------------------------------------------------------
+eng_Latn        900    900      855     45       0   95.0%
+est_Latn        900    900      815     85       0   90.6%
+fin_Latn        900    900      830     70       0   92.2%
+swe_Latn        900    900      800    100       0   88.9%
+------------------------------------------------------------
+TOTAL          3600   3600     3300    300           91.7%
+```
+
+### Gemma-4 E4B Q8_0 (`gemma-4-E4B-it-Q8_0.gguf`, 9.02 GB, LM Studio 0.4.9, Apple M2 Pro)
 
 ```
 Language       Done  Total  Correct  Wrong  Errors     Acc
@@ -59,4 +70,15 @@ swe_Latn        900    900      785    115       0   87.2%
 TOTAL          3600   3600     3025    575           84.0%
 ```
 
-Prompt template and evaluation details: [belebele.md](belebele.md)
+### Claude Haiku 4.5 (`anthropic/claude-haiku-4.5` via OpenRouter)
+
+```
+Language       Done  Total  Correct  Wrong  Errors     Acc
+------------------------------------------------------------
+eng_Latn        900    900      766    134       0   85.1%
+est_Latn        900    900      718    182       0   79.8%
+fin_Latn        900    900      761    139       0   84.6%
+swe_Latn        900    900      773    127       0   85.9%
+------------------------------------------------------------
+TOTAL          3600   3600     3018    582           83.8%
+```
