@@ -22,12 +22,14 @@ uv --version
 
 ## Python Installation
 
+**Recommended version: Python 3.12** (compatible with Ollama, LM Studio, and Unsloth)
+
 ```bash
+# Install the recommended version
+uv python install 3.12
+
 # List available Python versions
 uv python list
-
-# Install a specific version
-uv python install 3.12
 
 # See installed versions
 uv python list --only-installed
