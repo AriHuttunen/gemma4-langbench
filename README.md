@@ -34,9 +34,10 @@ Requires LM Studio's local server running on `localhost:1234` with a model loade
 Evaluate all languages at once (round-robin, resumable):
 
 ```bash
-uv run eval_all_langs.py              # all 900 per language
-uv run eval_all_langs.py -n 100       # first 100 per language
-uv run eval_all_langs.py --reset      # start fresh
+uv run eval_all_langs.py                                        # LM Studio, all 900 per language
+uv run eval_all_langs.py -n 100                                 # first 100 per language
+uv run eval_all_langs.py --reset                                # start fresh
+OPENROUTER_API_KEY=sk-... uv run eval_all_langs.py --model anthropic/claude-haiku-4.5  # OpenRouter
 ```
 
 ## Results
