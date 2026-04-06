@@ -2,11 +2,11 @@
 
 ## Quick Start
 
-1. **Install Python 3.10+** if not already available (e.g., via [Homebrew](https://brew.sh/): `brew install python`)
-2. **Install Unsloth** via pip:
+1. **Install [uv](https://docs.astral.sh/uv/)** if not already available (e.g., via [Homebrew](https://brew.sh/): `brew install uv`)
+2. **Install Unsloth** via uv:
 
 ```bash
-pip install unsloth
+uv pip install unsloth
 ```
 
 ## Resources
