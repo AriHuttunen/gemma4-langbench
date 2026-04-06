@@ -14,15 +14,12 @@ from openai import OpenAI
 from pathlib import Path
 
 DATA_DIR = Path("data/belebele")
-STATE_FILE = DATA_DIR / ".eval_state.json"
 LABELS = ["A", "B", "C", "D"]
 
 INSTRUCTION = (
     "Read the passage, the query, and the choices. "
     "Output only the letter (A, B, C, or D) corresponding to the correct answer."
 )
-
-client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
 
 
 def build_prompt(item: dict) -> str:
@@ -51,19 +48,25 @@ def parse_answer(text: str) -> str | None:
     return None
 
 
-def load_state() -> dict:
-    if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text())
+def state_file_for(model: str) -> Path:
+    safe = model.replace("/", "_")
+    return DATA_DIR / f".eval_state_{safe}.json"
+
+
+def load_state(path: Path) -> dict:
+    if path.exists():
+        return json.loads(path.read_text())
     return {}
 
 
-def save_state(state: dict):
-    STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
+def save_state(state: dict, path: Path):
+    path.write_text(json.dumps(state, indent=2) + "\n")
 
 
-def render(langs: list[str], state: dict, totals: dict, elapsed: float | None):
+def render(langs: list[str], state: dict, totals: dict, elapsed: float | None, model: str):
     """Render the stats table in-place."""
     lines = []
+    lines.append(f"Model: {model}")
     lines.append(f"{'Language':<12} {'Done':>6} {'Total':>6} {'Correct':>8} {'Wrong':>6} {'Errors':>7} {'Acc':>7}")
     lines.append("-" * 60)
     total_done = 0
@@ -100,8 +103,27 @@ render.prev_lines = 0
 def main():
     parser = argparse.ArgumentParser(description="Evaluate all languages on Belebele.")
     parser.add_argument("-n", type=int, default=900, help="Max questions per language (default: 900)")
+    parser.add_argument("--model", default="loaded-model", help="Model name (default: loaded-model for LM Studio)")
+    parser.add_argument("--base-url", default=None, help="API base URL (auto-detected for OpenRouter models)")
     parser.add_argument("--reset", action="store_true", help="Reset saved progress")
     args = parser.parse_args()
+
+    # Configure API client
+    if args.base_url:
+        base_url = args.base_url
+        api_key = os.environ.get("OPENROUTER_API_KEY", "no-key")
+    elif "/" in args.model:
+        base_url = "https://openrouter.ai/api/v1"
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        if not api_key:
+            print("Error: OPENROUTER_API_KEY env var required for OpenRouter models")
+            sys.exit(1)
+    else:
+        base_url = "http://localhost:1234/v1"
+        api_key = "lm-studio"
+
+    client = OpenAI(base_url=base_url, api_key=api_key)
+    sf = state_file_for(args.model)
 
     # Discover languages
     lang_files = sorted(DATA_DIR.glob("*.jsonl"))
@@ -123,7 +145,7 @@ def main():
     if args.reset:
         state = {}
     else:
-        state = load_state()
+        state = load_state(sf)
 
     # Handle Ctrl+C gracefully
     stopping = False
@@ -151,7 +173,7 @@ def main():
             t0 = time.perf_counter()
             try:
                 response = client.chat.completions.create(
-                    model="loaded-model",
+                    model=args.model,
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=5,
                     temperature=0,
@@ -162,8 +184,8 @@ def main():
                 s["errors"] += 1
                 s["done"] += 1
                 predicted = None
-                save_state(state)
-                render(langs, state, totals, time.perf_counter() - t0)
+                save_state(state, sf)
+                render(langs, state, totals, time.perf_counter() - t0, args.model)
                 continue
 
             elapsed = time.perf_counter() - t0
@@ -174,14 +196,14 @@ def main():
                 s["wrong"] += 1
             s["done"] += 1
 
-            save_state(state)
-            render(langs, state, totals, elapsed)
+            save_state(state, sf)
+            render(langs, state, totals, elapsed, args.model)
 
         if not made_progress:
             break
 
     # Final state
-    save_state(state)
+    save_state(state, sf)
     if stopping:
         print("\nStopped. Progress saved. Run again to resume.")
 
