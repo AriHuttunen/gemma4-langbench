@@ -5,4 +5,5 @@ Evaluate how well gemma-4 supports various languages
 
 - [Installing Ollama on macOS](ollama.md)
 - [Installing LM Studio on macOS](lmstudio.md)
+- [Installing Unsloth on macOS](unsloth.md)
 testing
