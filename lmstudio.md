@@ -20,6 +20,17 @@ For detailed installation steps, see the [official documentation](https://lmstud
 1. Open LM Studio and go to the **Discover** tab
 2. Search for `gemma` and download a model variant
 
+## Start the Local Server
+
+1. Click the **Developer** tab in the left sidebar (the CLI/terminal icon `>_`)
+2. Select **Local Server**
+3. Ensure your model is loaded and shows **READY**
+4. Toggle the **Status** switch from Stopped to Running
+
+![LM Studio Developer tab with Local Server](images/lmstudio-developer-tab.png)
+
+The server runs on `http://localhost:1234` by default.
+
 ## Resources
 
 - [Official download page](https://lmstudio.ai/)
