@@ -6,6 +6,8 @@
 2. Open the downloaded `.dmg` file and move LM Studio to your Applications folder
 3. Launch LM Studio from Applications
 
+For detailed installation steps, see the [official documentation](https://lmstudio.ai/docs).
+
 ## Load a Model
 
 1. Open LM Studio and go to the **Discover** tab

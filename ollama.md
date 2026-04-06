@@ -2,9 +2,11 @@
 
 ## Quick Start
 
-1. **Download** the macOS installer from [ollama.com/download](https://ollama.com/download)
-2. Open the downloaded `.dmg` file and move Ollama to your Applications folder
-3. Launch Ollama from Applications
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+Or download the installer directly: [Ollama.dmg](https://ollama.com/download/Ollama.dmg)
 
 ## Verify Installation
 
