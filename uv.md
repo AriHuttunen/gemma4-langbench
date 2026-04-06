@@ -14,10 +14,17 @@ Or via the official installer:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-2. **Verify installation:**
+2. **Install Python 3.12:**
+
+```bash
+uv python install 3.12
+```
+
+3. **Verify installation:**
 
 ```bash
 uv --version
+uv python list --only-installed
 ```
 
 ## Resources
