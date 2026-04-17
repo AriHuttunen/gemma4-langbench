@@ -38,7 +38,14 @@ Evaluate all languages at once (round-robin, resumable):
 uv run eval_all_langs.py                                        # LM Studio, all 900 per language
 uv run eval_all_langs.py -n 100                                 # first 100 per language
 uv run eval_all_langs.py --reset                                # start fresh
-OPENROUTER_API_KEY=sk-... uv run eval_all_langs.py --model anthropic/claude-haiku-4.5  # OpenRouter
+OPENROUTER_API_KEY=sk-... uv run eval_all_langs.py --model anthropic/claude-haiku-4.5  # OpenRouter (bash/zsh)
+```
+
+On **fish shell**, inline env vars don't work — set the key first:
+
+```fish
+set -x OPENROUTER_API_KEY sk-...
+uv run eval_all_langs.py --model anthropic/claude-haiku-4.5
 ```
 
 ## Wrong-answer log

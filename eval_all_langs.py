@@ -61,9 +61,20 @@ def log_file_for(model: str) -> Path:
     return Path(f"wrong_answers_{safe}.jsonl")
 
 
+def run_log_file_for(model: str) -> Path:
+    safe = model.replace("/", "_")
+    return Path(f"run_log_{safe}.log")
+
+
 def append_log(log_path: Path, entry: dict) -> None:
     with log_path.open("a") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def run_log(run_log_path: Path, msg: str) -> None:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with run_log_path.open("a") as f:
+        f.write(f"{ts} {msg}\n")
 
 
 def english_block(item: dict) -> dict:
@@ -205,20 +216,29 @@ def render(
 render.prev_lines = 0
 
 
+def model_api_kwargs(model: str) -> dict:
+    if "anthropic/" in model:
+        return {
+            "temperature": 1,
+            "max_tokens": 2500,
+            "extra_body": {"thinking": {"type": "enabled", "budget_tokens": 2000}},
+        }
+    return {"temperature": 0, "max_tokens": 2048}
+
+
 async def query_model(async_client, model: str, prompt: str):
     """Send a single query to the model. Returns (content, elapsed)."""
     t0 = time.perf_counter()
     response = await async_client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=2048,
-        temperature=0,
+        **model_api_kwargs(model),
     )
     elapsed = time.perf_counter() - t0
     return response.choices[0].message.content, elapsed
 
 
-def run_sequential(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index):
+def run_sequential(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index, rl):
     """Sequential round-robin for local models."""
     client = OpenAI(base_url=base_url, api_key=api_key)
 
@@ -252,17 +272,16 @@ def run_sequential(langs, data, state, totals, sf, args, base_url, api_key, log_
                 response = client.chat.completions.create(
                     model=args.model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=2048,
-                    temperature=0,
+                    **model_api_kwargs(args.model),
                 )
                 raw = response.choices[0].message.content
                 predicted = parse_answer(raw)
             except Exception as e:
-                if s["errors"] == 0:
-                    print(f"\nError ({lang}): {e}", file=sys.stderr)
+                elapsed = time.perf_counter() - t0
+                print(f"\nError ({lang}): {e}", file=sys.stderr)
+                run_log(rl, f"ERROR lang={lang} idx={idx} {e}")
                 s["errors"] += 1
                 s["done"] += 1
-                elapsed = time.perf_counter() - t0
                 eng = eng_index.get((item.get("link"), item.get("question_number")))
                 append_log(
                     log_path,
@@ -304,7 +323,7 @@ def run_sequential(langs, data, state, totals, sf, args, base_url, api_key, log_
         print("\nStopped. Progress saved. Run again to resume.")
 
 
-async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index):
+async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index, rl):
     """Parallel requests for cloud APIs — one request per language concurrently."""
     async_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 
@@ -344,8 +363,8 @@ async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key, 
         for (lang, idx, item, _, expected), result in zip(pending, results):
             s = state[lang]
             if isinstance(result, Exception):
-                if s["errors"] == 0:
-                    print(f"\nError ({lang}): {result}", file=sys.stderr)
+                print(f"\nError ({lang}): {result}", file=sys.stderr)
+                run_log(rl, f"ERROR lang={lang} idx={idx} {result}")
                 s["errors"] += 1
                 eng = eng_index.get((item.get("link"), item.get("question_number")))
                 append_log(
@@ -417,6 +436,7 @@ def main():
 
     sf = state_file_for(args.model)
     log_path = log_file_for(args.model)
+    rl = run_log_file_for(args.model)
     parallel = "/" in args.model
 
     # Discover languages
@@ -449,12 +469,16 @@ def main():
     else:
         state = load_state(sf)
 
+    run_log(rl, f"START model={args.model} base_url={base_url} parallel={parallel} n={args.n} reset={args.reset}")
+
     if parallel:
         asyncio.run(
-            run_parallel(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index)
+            run_parallel(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index, rl)
         )
     else:
-        run_sequential(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index)
+        run_sequential(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index, rl)
+
+    run_log(rl, "DONE")
 
 
 if __name__ == "__main__":
