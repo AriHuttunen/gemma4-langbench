@@ -123,7 +123,7 @@ async def query_model(async_client, model: str, prompt: str):
     response = await async_client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=5,
+        max_tokens=10000,
         temperature=0,
     )
     elapsed = time.perf_counter() - t0
