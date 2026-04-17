@@ -72,7 +72,7 @@ def main():
         response = client.chat.completions.create(
             model="loaded-model",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=5,
+            max_tokens=10000,
             temperature=0,
         )
         elapsed = time.perf_counter() - t0
