@@ -84,6 +84,20 @@ swe_Latn        900    900      800    100       0   88.9%
 TOTAL          3600   3600     3300    300           91.7%
 ```
 
+### Claude Sonnet 4.6 (`anthropic/claude-sonnet-4.6` via OpenRouter) with thinking turned on
+
+```
+Model: anthropic/claude-sonnet-4.6
+Language       Done  Total  Correct  Wrong  Errors     Acc
+------------------------------------------------------------
+eng_Latn        900    900      856     44       0   95.1%
+est_Latn        900    900      811     89       0   90.1%
+fin_Latn        900    900      828     72       0   92.0%
+swe_Latn        900    900      805     95       0   89.4%
+------------------------------------------------------------
+TOTAL          3600   3600     3300    300           91.7%
+```
+
 ### Gemma-4 E4B Q8_0 (`gemma-4-E4B-it-Q8_0.gguf`, 9.02 GB, LM Studio 0.4.9, Apple M2 Pro)
 
 ```
