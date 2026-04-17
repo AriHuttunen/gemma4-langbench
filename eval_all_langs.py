@@ -11,8 +11,9 @@ import os
 import signal
 import sys
 import time
-from openai import AsyncOpenAI, OpenAI
 from pathlib import Path
+
+from openai import AsyncOpenAI, OpenAI
 
 DATA_DIR = Path("data/belebele")
 LABELS = ["A", "B", "C", "D"]
@@ -67,11 +68,15 @@ def save_state(state: dict, path: Path):
 recent_times: list[float] = []
 
 
-def render(langs: list[str], state: dict, totals: dict, elapsed: float | None, model: str):
+def render(
+    langs: list[str], state: dict, totals: dict, elapsed: float | None, model: str
+):
     """Render the stats table in-place."""
     lines = []
     lines.append(f"Model: {model}")
-    lines.append(f"{'Language':<12} {'Done':>6} {'Total':>6} {'Correct':>8} {'Wrong':>6} {'Errors':>7} {'Acc':>7}")
+    lines.append(
+        f"{'Language':<12} {'Done':>6} {'Total':>6} {'Correct':>8} {'Wrong':>6} {'Errors':>7} {'Acc':>7}"
+    )
     lines.append("-" * 60)
     total_done = 0
     total_correct = 0
@@ -83,14 +88,18 @@ def render(langs: list[str], state: dict, totals: dict, elapsed: float | None, m
         wrong = s.get("wrong", 0)
         errors = s.get("errors", 0)
         total = totals[lang]
-        acc = f"{correct/done*100:.1f}%" if done > 0 else "-"
-        lines.append(f"{lang:<12} {done:>6} {total:>6} {correct:>8} {wrong:>6} {errors:>7} {acc:>7}")
+        acc = f"{correct / done * 100:.1f}%" if done > 0 else "-"
+        lines.append(
+            f"{lang:<12} {done:>6} {total:>6} {correct:>8} {wrong:>6} {errors:>7} {acc:>7}"
+        )
         total_done += done
         total_correct += correct
         total_total += total
     lines.append("-" * 60)
-    overall_acc = f"{total_correct/total_done*100:.1f}%" if total_done > 0 else "-"
-    lines.append(f"{'TOTAL':<12} {total_done:>6} {total_total:>6} {total_correct:>8} {total_done-total_correct:>6} {'':>7} {overall_acc:>7}")
+    overall_acc = f"{total_correct / total_done * 100:.1f}%" if total_done > 0 else "-"
+    lines.append(
+        f"{'TOTAL':<12} {total_done:>6} {total_total:>6} {total_correct:>8} {total_done - total_correct:>6} {'':>7} {overall_acc:>7}"
+    )
     if elapsed is not None:
         if isinstance(elapsed, list) and elapsed:
             recent_times.extend(elapsed)
@@ -99,10 +108,20 @@ def render(langs: list[str], state: dict, totals: dict, elapsed: float | None, m
         last10 = recent_times[-10:]
         if last10:
             lines.append(f"\n{'':>12} {'min':>8} {'avg':>8} {'max':>8}")
-            batch = elapsed if isinstance(elapsed, list) and elapsed else [elapsed] if isinstance(elapsed, (int, float)) else []
+            batch = (
+                elapsed
+                if isinstance(elapsed, list) and elapsed
+                else [elapsed]
+                if isinstance(elapsed, (int, float))
+                else []
+            )
             if batch:
-                lines.append(f"{'Last batch:':<12} {min(batch):>7.2f}s {sum(batch)/len(batch):>7.2f}s {max(batch):>7.2f}s")
-            lines.append(f"{'Last 10:':<12} {min(last10):>7.2f}s {sum(last10)/len(last10):>7.2f}s {max(last10):>7.2f}s")
+                lines.append(
+                    f"{'Last batch:':<12} {min(batch):>7.2f}s {sum(batch) / len(batch):>7.2f}s {max(batch):>7.2f}s"
+                )
+            lines.append(
+                f"{'Last 10:':<12} {min(last10):>7.2f}s {sum(last10) / len(last10):>7.2f}s {max(last10):>7.2f}s"
+            )
     else:
         lines.append("")
     # Move cursor to top of table and overwrite
@@ -113,6 +132,7 @@ def render(langs: list[str], state: dict, totals: dict, elapsed: float | None, m
     sys.stdout.write(output)
     sys.stdout.flush()
     render.prev_lines = num_lines
+
 
 render.prev_lines = 0
 
@@ -135,9 +155,11 @@ def run_sequential(langs, data, state, totals, sf, args, base_url, api_key):
     client = OpenAI(base_url=base_url, api_key=api_key)
 
     stopping = False
+
     def handle_signal(sig, frame):
         nonlocal stopping
         stopping = True
+
     signal.signal(signal.SIGINT, handle_signal)
 
     while not stopping:
@@ -145,7 +167,9 @@ def run_sequential(langs, data, state, totals, sf, args, base_url, api_key):
         for lang in langs:
             if stopping:
                 break
-            s = state.setdefault(lang, {"done": 0, "correct": 0, "wrong": 0, "errors": 0})
+            s = state.setdefault(
+                lang, {"done": 0, "correct": 0, "wrong": 0, "errors": 0}
+            )
             idx = s["done"]
             if idx >= len(data[lang]):
                 continue
@@ -160,7 +184,7 @@ def run_sequential(langs, data, state, totals, sf, args, base_url, api_key):
                 response = client.chat.completions.create(
                     model=args.model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=5,
+                    max_tokens=10000,
                     temperature=0,
                 )
                 raw = response.choices[0].message.content
@@ -200,16 +224,20 @@ async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key):
 
     stopping = False
     loop = asyncio.get_event_loop()
+
     def handle_signal(sig, frame):
         nonlocal stopping
         stopping = True
+
     signal.signal(signal.SIGINT, handle_signal)
 
     while not stopping:
         # Collect pending tasks for this round
         pending = []
         for lang in langs:
-            s = state.setdefault(lang, {"done": 0, "correct": 0, "wrong": 0, "errors": 0})
+            s = state.setdefault(
+                lang, {"done": 0, "correct": 0, "wrong": 0, "errors": 0}
+            )
             idx = s["done"]
             if idx < len(data[lang]):
                 item = data[lang][idx]
@@ -220,7 +248,9 @@ async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key):
         if not pending:
             break
 
-        tasks = [query_model(async_client, args.model, prompt) for _, prompt, _ in pending]
+        tasks = [
+            query_model(async_client, args.model, prompt) for _, prompt, _ in pending
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         batch_times = []
@@ -250,9 +280,19 @@ async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key):
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate all languages on Belebele.")
-    parser.add_argument("-n", type=int, default=900, help="Max questions per language (default: 900)")
-    parser.add_argument("--model", default="loaded-model", help="Model name (default: loaded-model for LM Studio)")
-    parser.add_argument("--base-url", default=None, help="API base URL (auto-detected for OpenRouter models)")
+    parser.add_argument(
+        "-n", type=int, default=900, help="Max questions per language (default: 900)"
+    )
+    parser.add_argument(
+        "--model",
+        default="loaded-model",
+        help="Model name (default: loaded-model for LM Studio)",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="API base URL (auto-detected for OpenRouter models)",
+    )
     parser.add_argument("--reset", action="store_true", help="Reset saved progress")
     args = parser.parse_args()
 
@@ -286,7 +326,7 @@ def main():
     for lang, path in zip(langs, lang_files):
         with open(path) as f:
             items = [json.loads(line) for line in f]
-        data[lang] = items[:args.n]
+        data[lang] = items[: args.n]
         totals[lang] = len(data[lang])
 
     # Load or reset state
@@ -296,7 +336,9 @@ def main():
         state = load_state(sf)
 
     if parallel:
-        asyncio.run(run_parallel(langs, data, state, totals, sf, args, base_url, api_key))
+        asyncio.run(
+            run_parallel(langs, data, state, totals, sf, args, base_url, api_key)
+        )
     else:
         run_sequential(langs, data, state, totals, sf, args, base_url, api_key)
 
