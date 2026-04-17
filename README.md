@@ -5,6 +5,7 @@ Evaluate how well gemma-4 supports various languages
 
 - [Installing Ollama on macOS](ollama.md)
 - [Installing LM Studio on macOS](lmstudio.md)
+- [Enabling Gemma 4 thinking mode in LM Studio](lmstudio_SETUP_THINKING.md)
 - [Installing uv on macOS](uv.md)
 - [Installing Unsloth on macOS](unsloth.md)
 
@@ -39,6 +40,25 @@ uv run eval_all_langs.py -n 100                                 # first 100 per 
 uv run eval_all_langs.py --reset                                # start fresh
 OPENROUTER_API_KEY=sk-... uv run eval_all_langs.py --model anthropic/claude-haiku-4.5  # OpenRouter
 ```
+
+## Wrong-answer log
+
+`eval_all_langs.py` appends a JSONL record to `./wrong_answers_<model>.jsonl` for every question the model gets wrong (including unparseable responses and API errors). Each record contains enough information to reproduce the failure without re-running the model:
+
+| Field | Description |
+|---|---|
+| `timestamp` | UTC time of the call |
+| `model` / `base_url` | Exact model identifier and API endpoint |
+| `language` / `dialect` | Language file stem (e.g. `fin_Latn`) and Belebele dialect tag |
+| `link` | Source article URL — together with `language` uniquely locates the question |
+| `error_type` | `wrong_answer`, `unparseable`, or `api_error` |
+| `correct_label` / `correct_text` | The right answer letter and its full text |
+| `predicted_label` / `raw_response` | What the model returned |
+| `passage` / `question` / `choices` | Full question content in the tested language |
+| `english` | The same passage, question, and choices in English (omitted when language is `eng_Latn`) |
+| `elapsed_seconds` | Latency for this call |
+
+The file is append-only and safe to interrupt — progress is tracked separately in `.eval_state_<model>.json`. Running with `--reset` deletes both files before starting fresh.
 
 ## Results
 

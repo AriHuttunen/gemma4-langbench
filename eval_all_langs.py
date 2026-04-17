@@ -11,6 +11,7 @@ import os
 import signal
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from openai import AsyncOpenAI, OpenAI
@@ -53,6 +54,73 @@ def parse_answer(text: str) -> str | None:
 def state_file_for(model: str) -> Path:
     safe = model.replace("/", "_")
     return DATA_DIR / f".eval_state_{safe}.json"
+
+
+def log_file_for(model: str) -> Path:
+    safe = model.replace("/", "_")
+    return Path(f"wrong_answers_{safe}.jsonl")
+
+
+def append_log(log_path: Path, entry: dict) -> None:
+    with log_path.open("a") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def english_block(item: dict) -> dict:
+    correct_num = int(item["correct_answer_num"])
+    return {
+        "passage": item["flores_passage"],
+        "question": item["question"],
+        "choices": {
+            "A": item["mc_answer1"],
+            "B": item["mc_answer2"],
+            "C": item["mc_answer3"],
+            "D": item["mc_answer4"],
+        },
+        "correct_label": LABELS[correct_num - 1],
+        "correct_text": item[f"mc_answer{correct_num}"],
+    }
+
+
+def build_log_entry(
+    lang: str,
+    item: dict,
+    model: str,
+    base_url: str,
+    error_type: str,
+    predicted: str | None,
+    raw_response: str | None,
+    elapsed: float | None,
+    english_item: dict | None = None,
+    error_message: str | None = None,
+) -> dict:
+    correct_num = int(item["correct_answer_num"])
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "model": model,
+        "base_url": base_url,
+        "language": lang,
+        "dialect": item.get("dialect"),
+        "link": item.get("link"),
+        "error_type": error_type,
+        "correct_label": LABELS[correct_num - 1],
+        "correct_text": item[f"mc_answer{correct_num}"],
+        "predicted_label": predicted,
+        "raw_response": raw_response,
+        "error_message": error_message,
+        "passage": item["flores_passage"],
+        "question": item["question"],
+        "choices": {
+            "A": item["mc_answer1"],
+            "B": item["mc_answer2"],
+            "C": item["mc_answer3"],
+            "D": item["mc_answer4"],
+        },
+        "elapsed_seconds": elapsed,
+    }
+    if english_item is not None and lang != "eng_Latn":
+        entry["english"] = english_block(english_item)
+    return entry
 
 
 def load_state(path: Path) -> dict:
@@ -150,7 +218,7 @@ async def query_model(async_client, model: str, prompt: str):
     return response.choices[0].message.content, elapsed
 
 
-def run_sequential(langs, data, state, totals, sf, args, base_url, api_key):
+def run_sequential(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index):
     """Sequential round-robin for local models."""
     client = OpenAI(base_url=base_url, api_key=api_key)
 
@@ -194,9 +262,18 @@ def run_sequential(langs, data, state, totals, sf, args, base_url, api_key):
                     print(f"\nError ({lang}): {e}", file=sys.stderr)
                 s["errors"] += 1
                 s["done"] += 1
-                predicted = None
+                elapsed = time.perf_counter() - t0
+                eng = eng_index.get((item.get("link"), item.get("question_number")))
+                append_log(
+                    log_path,
+                    build_log_entry(
+                        lang, item, args.model, base_url,
+                        "api_error", None, None, elapsed,
+                        english_item=eng, error_message=str(e),
+                    ),
+                )
                 save_state(state, sf)
-                render(langs, state, totals, time.perf_counter() - t0, args.model)
+                render(langs, state, totals, elapsed, args.model)
                 continue
 
             elapsed = time.perf_counter() - t0
@@ -205,6 +282,15 @@ def run_sequential(langs, data, state, totals, sf, args, base_url, api_key):
                 s["correct"] += 1
             else:
                 s["wrong"] += 1
+                eng = eng_index.get((item.get("link"), item.get("question_number")))
+                append_log(
+                    log_path,
+                    build_log_entry(
+                        lang, item, args.model, base_url,
+                        "wrong_answer" if predicted is not None else "unparseable",
+                        predicted, raw, elapsed, english_item=eng,
+                    ),
+                )
             s["done"] += 1
 
             save_state(state, sf)
@@ -218,7 +304,7 @@ def run_sequential(langs, data, state, totals, sf, args, base_url, api_key):
         print("\nStopped. Progress saved. Run again to resume.")
 
 
-async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key):
+async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index):
     """Parallel requests for cloud APIs — one request per language concurrently."""
     async_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 
@@ -243,23 +329,33 @@ async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key):
                 item = data[lang][idx]
                 prompt = build_prompt(item)
                 expected = LABELS[int(item["correct_answer_num"]) - 1]
-                pending.append((lang, prompt, expected))
+                pending.append((lang, idx, item, prompt, expected))
 
         if not pending:
             break
 
         tasks = [
-            query_model(async_client, args.model, prompt) for _, prompt, _ in pending
+            query_model(async_client, args.model, prompt)
+            for _, _, _, prompt, _ in pending
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         batch_times = []
-        for (lang, _, expected), result in zip(pending, results):
+        for (lang, idx, item, _, expected), result in zip(pending, results):
             s = state[lang]
             if isinstance(result, Exception):
                 if s["errors"] == 0:
                     print(f"\nError ({lang}): {result}", file=sys.stderr)
                 s["errors"] += 1
+                eng = eng_index.get((item.get("link"), item.get("question_number")))
+                append_log(
+                    log_path,
+                    build_log_entry(
+                        lang, item, args.model, base_url,
+                        "api_error", None, None, None,
+                        english_item=eng, error_message=str(result),
+                    ),
+                )
             else:
                 raw, elapsed = result
                 batch_times.append(elapsed)
@@ -268,6 +364,15 @@ async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key):
                     s["correct"] += 1
                 else:
                     s["wrong"] += 1
+                    eng = eng_index.get((item.get("link"), item.get("question_number")))
+                    append_log(
+                        log_path,
+                        build_log_entry(
+                            lang, item, args.model, base_url,
+                            "wrong_answer" if predicted is not None else "unparseable",
+                            predicted, raw, elapsed, english_item=eng,
+                        ),
+                    )
             s["done"] += 1
 
         save_state(state, sf)
@@ -311,6 +416,7 @@ def main():
         api_key = "lm-studio"
 
     sf = state_file_for(args.model)
+    log_path = log_file_for(args.model)
     parallel = "/" in args.model
 
     # Discover languages
@@ -329,18 +435,26 @@ def main():
         data[lang] = items[: args.n]
         totals[lang] = len(data[lang])
 
+    # Build English lookup keyed by (link, question_number) for parallel log entries
+    eng_index: dict[tuple, dict] = {
+        (item.get("link"), item.get("question_number")): item
+        for item in data.get("eng_Latn", [])
+    }
+
     # Load or reset state
     if args.reset:
         state = {}
+        if log_path.exists():
+            log_path.unlink()
     else:
         state = load_state(sf)
 
     if parallel:
         asyncio.run(
-            run_parallel(langs, data, state, totals, sf, args, base_url, api_key)
+            run_parallel(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index)
         )
     else:
-        run_sequential(langs, data, state, totals, sf, args, base_url, api_key)
+        run_sequential(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index)
 
 
 if __name__ == "__main__":
