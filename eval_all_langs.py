@@ -143,7 +143,7 @@ async def query_model(async_client, model: str, prompt: str):
     response = await async_client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=10000,
+        max_tokens=2048,
         temperature=0,
     )
     elapsed = time.perf_counter() - t0
@@ -184,7 +184,7 @@ def run_sequential(langs, data, state, totals, sf, args, base_url, api_key):
                 response = client.chat.completions.create(
                     model=args.model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=10000,
+                    max_tokens=2048,
                     temperature=0,
                 )
                 raw = response.choices[0].message.content

@@ -7,8 +7,9 @@
 import argparse
 import json
 import time
-from openai import OpenAI
 from pathlib import Path
+
+from openai import OpenAI
 
 LABELS = ["A", "B", "C", "D"]
 
@@ -48,8 +49,12 @@ def parse_answer(text: str) -> str | None:
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a model on Belebele.")
-    parser.add_argument("-n", type=int, default=100, help="Max questions (default: 100)")
-    parser.add_argument("-l", "--lang", default="eng_Latn", help="Language code (default: eng_Latn)")
+    parser.add_argument(
+        "-n", type=int, default=100, help="Max questions (default: 100)"
+    )
+    parser.add_argument(
+        "-l", "--lang", default="eng_Latn", help="Language code (default: eng_Latn)"
+    )
     args = parser.parse_args()
 
     dataset = Path(f"data/belebele/{args.lang}.jsonl")
@@ -72,7 +77,7 @@ def main():
         response = client.chat.completions.create(
             model="loaded-model",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=10000,
+            max_tokens=2048,
             temperature=0,
         )
         elapsed = time.perf_counter() - t0
@@ -90,17 +95,19 @@ def main():
         print(f"Q{i}: expected={expected} predicted={predicted} raw={raw!r} [{status}]")
         if i % 10 == 0:
             wrong = i - correct
-            print(f"  --- {i} questions: {correct} correct, {wrong} wrong, {correct/i*100:.1f}% ---")
+            print(
+                f"  --- {i} questions: {correct} correct, {wrong} wrong, {correct / i * 100:.1f}% ---"
+            )
             batch = times[-10:]
             timing_summary = (
-                f"  --- Q{i-9}-Q{i}: min={min(batch):.2f}s max={max(batch):.2f}s "
-                f"avg={sum(batch)/len(batch):.2f}s total={sum(batch):.1f}s "
-                f"| cumulative avg={sum(times)/len(times):.2f}s ---"
+                f"  --- Q{i - 9}-Q{i}: min={min(batch):.2f}s max={max(batch):.2f}s "
+                f"avg={sum(batch) / len(batch):.2f}s total={sum(batch):.1f}s "
+                f"| cumulative avg={sum(times) / len(times):.2f}s ---"
             )
             print(timing_summary)
 
     print(f"\nLanguage: {args.lang}")
-    print(f"Accuracy: {correct}/{len(items)} ({correct/len(items)*100:.0f}%)")
+    print(f"Accuracy: {correct}/{len(items)} ({correct / len(items) * 100:.0f}%)")
 
 
 if __name__ == "__main__":
