@@ -221,13 +221,13 @@ def model_api_kwargs(model: str) -> dict:
         return {
             "temperature": 1,
             "max_tokens": 2500,
-            "extra_body": {"thinking": {"type": "enabled", "budget_tokens": 2000}},
+            "extra_body": {"reasoning": {"type": "enabled", "max_tokens": 2000}},
         }
     return {"temperature": 0, "max_tokens": 2048}
 
 
 async def query_model(async_client, model: str, prompt: str):
-    """Send a single query to the model. Returns (content, elapsed)."""
+    """Send a single query to the model. Returns (content, reasoning_content, elapsed)."""
     t0 = time.perf_counter()
     response = await async_client.chat.completions.create(
         model=model,
@@ -235,7 +235,9 @@ async def query_model(async_client, model: str, prompt: str):
         **model_api_kwargs(model),
     )
     elapsed = time.perf_counter() - t0
-    return response.choices[0].message.content, elapsed
+    msg = response.choices[0].message
+    reasoning = getattr(msg, "reasoning_content", None)
+    return msg.content, reasoning, elapsed
 
 
 def run_sequential(langs, data, state, totals, sf, args, base_url, api_key, log_path, eng_index, rl):
@@ -376,8 +378,9 @@ async def run_parallel(langs, data, state, totals, sf, args, base_url, api_key, 
                     ),
                 )
             else:
-                raw, elapsed = result
+                raw, reasoning, elapsed = result
                 batch_times.append(elapsed)
+                run_log(rl, f"RESPONSE lang={lang} reasoning_chars={len(reasoning) if reasoning else 0}")
                 predicted = parse_answer(raw)
                 if predicted == expected:
                     s["correct"] += 1

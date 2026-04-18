@@ -9,6 +9,17 @@ Evaluate how well gemma-4 supports various languages
 - [Installing uv on macOS](uv.md)
 - [Installing Unsloth on macOS](unsloth.md)
 
+## Tools
+
+### `test_claude_on_openrouter.py`
+
+Smoke test for Claude models via OpenRouter. Runs a question with and without extended thinking and prints elapsed time, whether reasoning fired, a reasoning excerpt, and the answer. Useful for verifying your API key and that thinking is actually active before a full eval run.
+
+```fish
+set -x OPENROUTER_API_KEY sk-or-...
+uv run test_claude_on_openrouter.py
+```
+
 ## Dataset
 
 Download the [Belebele](https://huggingface.co/datasets/facebook/belebele) benchmark (English, Finnish, Swedish, Estonian):
