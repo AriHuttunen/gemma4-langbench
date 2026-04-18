@@ -11,13 +11,13 @@ Evaluate how well gemma-4 supports various languages
 
 ## Tools
 
-### `test_claude_on_openrouter.py`
+### `test_openrouter.py`
 
-Smoke test for Claude models via OpenRouter. Runs a question with and without extended thinking and prints elapsed time, whether reasoning fired, a reasoning excerpt, and the answer. Useful for verifying your API key and that thinking is actually active before a full eval run.
+Smoke test for models via OpenRouter (Claude and Gemma). Runs a question with and without extended thinking (Claude only) and prints elapsed time, whether reasoning fired, a reasoning excerpt, and the answer. Useful for verifying your API key and that thinking is actually active before a full eval run.
 
 ```fish
 set -x OPENROUTER_API_KEY sk-or-...
-uv run test_claude_on_openrouter.py
+uv run test_openrouter.py
 ```
 
 ## Dataset
@@ -43,25 +43,60 @@ uv run eval_belebele.py -l swe_Latn -n 200   # 200 questions, Swedish
 
 Requires LM Studio's local server running on `localhost:1234` with a model loaded.
 
-Evaluate all languages at once (round-robin, resumable):
+Evaluate all languages at once (round-robin, resumable) — **`eval_all_langs_v2.py`** (recommended):
 
 ```bash
-uv run eval_all_langs.py                                        # LM Studio, all 900 per language
-uv run eval_all_langs.py -n 100                                 # first 100 per language
-uv run eval_all_langs.py --reset                                # start fresh
-OPENROUTER_API_KEY=sk-... uv run eval_all_langs.py --model anthropic/claude-haiku-4.5  # OpenRouter (bash/zsh)
+# LM Studio (local)
+uv run eval_all_langs_v2.py --local                             # all 900 per language
+uv run eval_all_langs_v2.py --local -n 100                      # first 100 per language
+uv run eval_all_langs_v2.py --local --thinking                  # enable extended thinking
+uv run eval_all_langs_v2.py --local --reset                     # start fresh
+
+# OpenRouter (bash/zsh)
+OPENROUTER_API_KEY=sk-... uv run eval_all_langs_v2.py --model anthropic/claude-sonnet-4.6
+OPENROUTER_API_KEY=sk-... uv run eval_all_langs_v2.py --model anthropic/claude-sonnet-4.6 --thinking
+OPENROUTER_API_KEY=sk-... uv run eval_all_langs_v2.py --model google/gemma-4-26b-a4b-it --thinking -n 100
 ```
 
 On **fish shell**, inline env vars don't work — set the key first:
 
 ```fish
 set -x OPENROUTER_API_KEY sk-...
-uv run eval_all_langs.py --model anthropic/claude-haiku-4.5
+uv run eval_all_langs_v2.py --model anthropic/claude-sonnet-4.6
+uv run eval_all_langs_v2.py --model anthropic/claude-sonnet-4.6 --thinking
+```
+
+`--local` and `--model` are mutually exclusive; exactly one is required. `--thinking` enables extended reasoning (temperature=1, 2000-token budget) and appends `_thinking` to all output file names so thinking/non-thinking runs don't overwrite each other.
+
+The original `eval_all_langs.py` is still available (auto-enables thinking for `anthropic/` models).
+
+### Dry-run tests
+
+Verify the script works without writing any files (`--dry-run` skips all state/log writes):
+
+```bash
+# local, no thinking
+uv run eval_all_langs_v2.py --local --dry-run -n 3
+
+# local, thinking
+uv run eval_all_langs_v2.py --local --thinking --dry-run -n 3
+
+# openrouter claude, no thinking
+uv run eval_all_langs_v2.py --model anthropic/claude-sonnet-4.6 --dry-run -n 3
+
+# openrouter claude, thinking
+uv run eval_all_langs_v2.py --model anthropic/claude-sonnet-4.6 --thinking --dry-run -n 3
+
+# openrouter gemma, no thinking
+uv run eval_all_langs_v2.py --model google/gemma-4-26b-a4b-it --dry-run -n 3
+
+# openrouter gemma, thinking
+uv run eval_all_langs_v2.py --model google/gemma-4-26b-a4b-it --thinking --dry-run -n 3
 ```
 
 ## Wrong-answer log
 
-`eval_all_langs.py` appends a JSONL record to `./wrong_answers_<model>.jsonl` for every question the model gets wrong (including unparseable responses and API errors). Each record contains enough information to reproduce the failure without re-running the model:
+`eval_all_langs_v2.py` (and `eval_all_langs.py`) appends a JSONL record to `./wrong_answers_<run_id>.jsonl` for every question the model gets wrong (including unparseable responses and API errors). Each record contains enough information to reproduce the failure without re-running the model:
 
 | Field | Description |
 |---|---|

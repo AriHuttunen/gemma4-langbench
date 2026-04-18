@@ -3,11 +3,11 @@
 # dependencies = ["openai"]
 # ///
 """
-API smoke test for Claude models via OpenRouter.
+API smoke test for models via OpenRouter.
 
 Verifies that:
-  - Basic chat completions work (temperature=0)
-  - Extended thinking works (temperature=1, reasoning enabled)
+  - Basic chat completions work
+  - Extended thinking works for Claude models (temperature=1, reasoning enabled)
 
 The OpenAI SDK silently drops the `reasoning` and `reasoning_details` fields
 from the parsed message object, so we inspect the raw HTTP response JSON
@@ -15,13 +15,12 @@ directly to confirm whether thinking is active.
 
 Usage:
     set -x OPENROUTER_API_KEY sk-or-...   # fish
-    uv run test_claude_on_openrouter.py
+    uv run test_openrouter.py
 """
 import os
 import time
 from openai import OpenAI
 
-MODEL = "anthropic/claude-sonnet-4.6"
 QUESTION = "What is the sum of all prime numbers less than 100?"  # correct answer: 1060
 
 client = OpenAI(
@@ -31,10 +30,26 @@ client = OpenAI(
 
 CASES = [
     (
+        "anthropic/claude-sonnet-4.6",
         "without thinking",
         {"temperature": 0, "max_tokens": 512},
     ),
     (
+        "anthropic/claude-sonnet-4.6",
+        "with thinking",
+        {
+            "temperature": 1,
+            "max_tokens": 2500,
+            "extra_body": {"reasoning": {"type": "enabled", "max_tokens": 2000}},
+        },
+    ),
+    (
+        "google/gemma-4-26b-a4b-it",
+        "without thinking",
+        {"temperature": 0, "max_tokens": 512},
+    ),
+    (
+        "google/gemma-4-26b-a4b-it",
         "with thinking",
         {
             "temperature": 1,
@@ -44,11 +59,11 @@ CASES = [
     ),
 ]
 
-for label, kwargs in CASES:
-    print(f"── {label} ──")
+for model, label, kwargs in CASES:
+    print(f"── {model} / {label} ──")
     t0 = time.perf_counter()
     raw = client.chat.completions.with_raw_response.create(
-        model=MODEL,
+        model=model,
         messages=[{"role": "user", "content": QUESTION}],
         **kwargs,
     )
@@ -58,7 +73,7 @@ for label, kwargs in CASES:
     msg = data["choices"][0]["message"]
     reasoning = msg.get("reasoning") or ""
 
-    print(f"  model:    {data.get('model', MODEL)}")
+    print(f"  model:    {data.get('model', model)}")
     print(f"  elapsed:  {elapsed:.2f}s")
     print(f"  thinking: {'yes' if reasoning else 'no'} ({len(reasoning)} chars)")
     if reasoning:
