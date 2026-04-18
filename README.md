@@ -164,6 +164,7 @@ Model: Gemma-4 E4B Q8_0 with thinking
 ### Claude Haiku 4.5 (`anthropic/claude-haiku-4.5` via OpenRouter)
 
 ```
+Model: anthropic/claude-haiku-4.5
 Language       Done  Total  Correct  Wrong  Errors     Acc
 ------------------------------------------------------------
 eng_Latn        900    900      766    134       0   85.1%
@@ -175,7 +176,7 @@ TOTAL          3600   3600     3018    582           83.8%
 ```
 
 ```
-Model: anthropic/claude-haiku-4.5
+Model: anthropic/claude-haiku-4.5 with thinking
 Language       Done  Total  Correct  Wrong  Errors     Acc
 ------------------------------------------------------------
 eng_Latn        900    900      742    158       0   82.4%
@@ -185,3 +186,5 @@ swe_Latn        900    900      731    169       0   81.2%
 ------------------------------------------------------------
 TOTAL          3600   3600     2795    805           77.6%
 ```
+
+Yes, haiku with thinking performed worse.
