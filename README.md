@@ -178,12 +178,12 @@ Model: Gemma-4 E4B Q8_0 with thinking
 (run not yet finished)
 Language       Done  Total  Correct  Wrong  Errors     Acc
 ------------------------------------------------------------
-eng_Latn        358    900      349      9       0   97.5%
-est_Latn        358    900      313     45       0   87.4%
-fin_Latn        358    900      334     24       0   93.3%
-swe_Latn        356    900      325     31       0   91.3%
+eng_Latn        378    900      367     11       0   97.1%
+est_Latn        378    900      331     47       0   87.6%
+fin_Latn        378    900      353     25       0   93.4%
+swe_Latn        376    900      343     33       0   91.2%
 ------------------------------------------------------------
-TOTAL          1430   3600     1321    109           92.4%
+TOTAL          1510   3600     1394    116           92.3%
 ```
 
 Adding thinking to locally running Gemma-4 E4B Q8_0 significantly improved performance, and made the run time at least 20x longer.
