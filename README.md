@@ -115,7 +115,21 @@ The file is append-only and safe to interrupt — progress is tracked separately
 
 ## Results
 
-All results: generative, 0-shot, temperature 0. Prompt template and evaluation details: [belebele.md](belebele.md)
+All results: generative, 0-shot. Prompt template and evaluation details: [belebele.md](belebele.md)
+
+### gemma-4-26b-a4b-it via openrouter
+
+```
+Model: google/gemma-4-26b-a4b-it (no thinking)
+Language       Done  Total  Correct  Wrong  Errors     Acc
+------------------------------------------------------------
+eng_Latn        900    900      870     30       0   96.7%
+est_Latn        900    900      802     98       0   89.1%
+fin_Latn        900    900      833     67       0   92.6%
+swe_Latn        900    900      833     67       0   92.6%
+------------------------------------------------------------
+TOTAL          3600   3600     3338    262           92.7%
+```
 
 ### Claude Sonnet 4.6 (`anthropic/claude-sonnet-4.6` via OpenRouter)
 
@@ -161,6 +175,15 @@ TOTAL          3600   3600     3025    575           84.0%
 
 ```
 Model: Gemma-4 E4B Q8_0 with thinking
+(run not yet finished)
+Language       Done  Total  Correct  Wrong  Errors     Acc
+------------------------------------------------------------
+eng_Latn        358    900      349      9       0   97.5%
+est_Latn        358    900      313     45       0   87.4%
+fin_Latn        358    900      334     24       0   93.3%
+swe_Latn        356    900      325     31       0   91.3%
+------------------------------------------------------------
+TOTAL          1430   3600     1321    109           92.4%
 ```
 
 Adding thinking to locally running Gemma-4 E4B Q8_0 significantly improved performance, and made the run time at least 20x longer.
