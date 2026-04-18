@@ -43,7 +43,9 @@ def build_prompt(item: dict) -> str:
     )
 
 
-def parse_answer(text: str) -> str | None:
+def parse_answer(text: str | None) -> str | None:
+    if text is None:
+        return None
     text = text.strip().upper()
     for label in LABELS:
         if text.startswith(f"({label})") or text.startswith(label):

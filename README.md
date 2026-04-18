@@ -143,6 +143,8 @@ swe_Latn        900    900      805     95       0   89.4%
 TOTAL          3600   3600     3300    300           91.7%
 ```
 
+Adding thinking to sonnet 4.6 didn't much affect the results, but it made running this somewhat slower.
+
 ### Gemma-4 E4B Q8_0 (`gemma-4-E4B-it-Q8_0.gguf`, 9.02 GB, LM Studio 0.4.9, Apple M2 Pro)
 
 ```
@@ -160,6 +162,8 @@ TOTAL          3600   3600     3025    575           84.0%
 ```
 Model: Gemma-4 E4B Q8_0 with thinking
 ```
+
+Adding thinking to locally running Gemma-4 E4B Q8_0 significantly improved performance, and made the run time at least 20x longer.
 
 ### Claude Haiku 4.5 (`anthropic/claude-haiku-4.5` via OpenRouter)
 
