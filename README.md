@@ -85,6 +85,7 @@ All results: generative, 0-shot, temperature 0. Prompt template and evaluation d
 ### Claude Sonnet 4.6 (`anthropic/claude-sonnet-4.6` via OpenRouter)
 
 ```
+Model: anthropic/claude-sonnet-4.6
 Language       Done  Total  Correct  Wrong  Errors     Acc
 ------------------------------------------------------------
 eng_Latn        900    900      855     45       0   95.0%
@@ -95,10 +96,8 @@ swe_Latn        900    900      800    100       0   88.9%
 TOTAL          3600   3600     3300    300           91.7%
 ```
 
-### Claude Sonnet 4.6 (`anthropic/claude-sonnet-4.6` via OpenRouter) with thinking turned on
-
 ```
-Model: anthropic/claude-sonnet-4.6
+Model: anthropic/claude-sonnet-4.6 with thinking
 Language       Done  Total  Correct  Wrong  Errors     Acc
 ------------------------------------------------------------
 eng_Latn        900    900      856     44       0   95.1%
@@ -112,6 +111,7 @@ TOTAL          3600   3600     3300    300           91.7%
 ### Gemma-4 E4B Q8_0 (`gemma-4-E4B-it-Q8_0.gguf`, 9.02 GB, LM Studio 0.4.9, Apple M2 Pro)
 
 ```
+Model: Gemma-4 E4B Q8_0
 Language       Done  Total  Correct  Wrong  Errors     Acc
 ------------------------------------------------------------
 eng_Latn        900    900      810     90       0   90.0%
@@ -120,6 +120,10 @@ fin_Latn        900    900      766    134       0   85.1%
 swe_Latn        900    900      785    115       0   87.2%
 ------------------------------------------------------------
 TOTAL          3600   3600     3025    575           84.0%
+```
+
+```
+Model: Gemma-4 E4B Q8_0 with thinking
 ```
 
 ### Claude Haiku 4.5 (`anthropic/claude-haiku-4.5` via OpenRouter)
@@ -133,4 +137,16 @@ fin_Latn        900    900      761    139       0   84.6%
 swe_Latn        900    900      773    127       0   85.9%
 ------------------------------------------------------------
 TOTAL          3600   3600     3018    582           83.8%
+```
+
+```
+Model: anthropic/claude-haiku-4.5
+Language       Done  Total  Correct  Wrong  Errors     Acc
+------------------------------------------------------------
+eng_Latn        900    900      742    158       0   82.4%
+est_Latn        900    900      637    263       0   70.8%
+fin_Latn        900    900      685    215       0   76.1%
+swe_Latn        900    900      731    169       0   81.2%
+------------------------------------------------------------
+TOTAL          3600   3600     2795    805           77.6%
 ```
