@@ -68,8 +68,6 @@ uv run eval_all_langs_v2.py --model anthropic/claude-sonnet-4.6 --thinking
 
 `--local` and `--model` are mutually exclusive; exactly one is required. `--thinking` enables extended reasoning (temperature=1, 2000-token budget) and appends `_thinking` to all output file names so thinking/non-thinking runs don't overwrite each other.
 
-The original `eval_all_langs.py` is still available (auto-enables thinking for `anthropic/` models).
-
 ### Dry-run tests
 
 Verify the script works without writing any files (`--dry-run` skips all state/log writes):
@@ -103,7 +101,8 @@ uv run eval_all_langs_v2.py --model google/gemma-4-26b-a4b-it --thinking --dry-r
 | `timestamp` | UTC time of the call |
 | `model` / `base_url` | Exact model identifier and API endpoint |
 | `language` / `dialect` | Language file stem (e.g. `fin_Latn`) and Belebele dialect tag |
-| `link` | Source article URL — together with `language` uniquely locates the question |
+| `link` | Source article URL |
+| `question_number` | Question index within the article (stable cross-language ID when combined with `link`) |
 | `error_type` | `wrong_answer`, `unparseable`, or `api_error` |
 | `correct_label` / `correct_text` | The right answer letter and its full text |
 | `predicted_label` / `raw_response` | What the model returned |

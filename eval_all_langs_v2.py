@@ -117,6 +117,7 @@ def build_log_entry(
         "language": lang,
         "dialect": item.get("dialect"),
         "link": item.get("link"),
+        "question_number": item.get("question_number"),
         "error_type": error_type,
         "correct_label": LABELS[correct_num - 1],
         "correct_text": item[f"mc_answer{correct_num}"],

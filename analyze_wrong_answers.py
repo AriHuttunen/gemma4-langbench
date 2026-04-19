@@ -60,6 +60,9 @@ def load_wrong_answers(reverse_idx):
     outcome[(link, q_no)][(model_id, lang)] = error_type string
     wrong_counts[model_id][lang][error_type] = int
     model_ids = list of model_id strings (from filenames, in sorted order)
+
+    question_number is read directly from the log when present (new logs);
+    falls back to reverse lookup by question text for old logs that lack it.
     """
     outcome = defaultdict(dict)
     wrong_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
@@ -80,14 +83,18 @@ def load_wrong_answers(reverse_idx):
                 if lang not in LANGUAGES:
                     continue
                 link = r["link"]
-                q_text = r["question"]
                 error_type = r["error_type"]
 
-                q_no = reverse_idx[lang].get((link, q_text))
+                q_no = r.get("question_number")
+                if q_no is not None:
+                    q_no = int(q_no)
+                else:
+                    q_text = r["question"]
+                    q_no = reverse_idx[lang].get((link, q_text))
+                    if q_no is None:
+                        q_no = reverse_idx[lang].get((link, q_text.strip()))
                 if q_no is None:
-                    q_no = reverse_idx[lang].get((link, q_text.strip()))
-                if q_no is None:
-                    unmatched.append((fpath, lineno, lang, link, q_text[:60]))
+                    unmatched.append((fpath, lineno, lang, link, r["question"][:60]))
                     continue
 
                 outcome[(link, q_no)][(model_id, lang)] = error_type
