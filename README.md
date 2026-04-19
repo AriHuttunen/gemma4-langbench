@@ -214,3 +214,75 @@ TOTAL          3600   3600     2795    805           77.6%
 ```
 
 Yes, haiku with thinking performed worse.
+
+## Analysis
+
+`analyze_wrong_answers.py` joins all `wrong_answers_*.jsonl` logs with the Belebele source data and produces per-question statistics. Run with:
+
+```bash
+uv run analyze_wrong_answers.py
+```
+
+Outputs to `stats/`: `accuracy.csv`, `hardest_questions.csv`, `language_flip.csv`, `model_disagreement.csv`, `SUMMARY.md`.
+
+### Questions wrong by all 4 models in all 4 languages
+
+7 questions were answered incorrectly by every model in every language (16/16 failure rate). These are likely flawed benchmark questions rather than genuine model failures.
+
+| q_no | Question | Link |
+|------|----------|------|
+| 2 | How long have humans been magnifying objects using lenses? | [Telescopes](https://en.wikibooks.org/wiki/High_School_Earth_Science/Telescopes) |
+| 1 | What can be found at The Giza Plateau? | [Great Pyramid](https://en.wikibooks.org/wiki/The_Seven_Wonders_of_the_World/The_Great_Pyramid) |
+| 2 | Based on the information given in the passage, what was not mentioned in the Atlanta Journal-Constitution's report? | [Beverly Hall](https://en.wikinews.org/wiki/Beverly_Hall,_indicted_public_school_superintendent,_dies_aged_68) |
+| 1 | While visiting the location described in the passage, which of the following would be deemed as inappropriate? | [Auschwitz-Birkenau](https://en.wikivoyage.org/wiki/Auschwitz-Birkenau) |
+| 2 | Which statement does not accurately describe auxiliary languages? | [Auxiliary languages](https://en.wikivoyage.org/wiki/Auxiliary_languages) |
+| 1 | According to the passage, which scenario would be ideal for a traveler planning to take a bus from the inter-district station? | [Thimphu](https://en.wikivoyage.org/wiki/Thimphu) |
+| 2 | Which of the following facts about Timbuktu is true? | [Timbuktu](https://en.wikivoyage.org/wiki/Timbuktu) |
+
+#### Example bad question: Telescopes
+
+> Humans have been making and using lenses for magnification for thousands and thousands of years. However, the first true telescopes were made in Europe in the late 16th century. These telescopes used a combination of two lenses to make distant objects appear both nearer and larger.
+
+**Question:** How long have humans been magnifying objects using lenses?
+
+- A. For a thousand years
+- B. Since the late 16th century ← benchmark's "correct" answer
+- C. For thousands of years ← what the passage actually says
+- D. Since the early 16th century
+
+The passage explicitly states humans have used lenses for magnification for "thousands and thousands of years", making **C** the correct reading. The benchmark marks **B** as correct, which describes when *telescopes* were invented — a different thing entirely. Every model answered C and was penalised for it.
+
+### Language flip (English-correct → non-English wrong)
+
+| Model | Questions flipped |
+|-------|-------------------|
+| anthropic/claude-haiku-4.5 (thinking) | 335 |
+| local Gemma-4 E4B Q8_0 (thinking) | 133 |
+| google/gemma-4-26b-a4b-it | 120 |
+| anthropic/claude-sonnet-4.6 (thinking) | 118 |
+
+Haiku has nearly 3× as many language flips as the other models — it is far more dependent on English phrasing than the others.
+
+### Model disagreement per language
+
+| Language | Questions where exactly 1 or 3 models differ |
+|----------|----------------------------------------------|
+| est_Latn | 265 |
+| fin_Latn | 198 |
+| eng_Latn | 154 |
+| swe_Latn | 142 |
+
+Estonian produces the most inter-model disagreement — it is the language where models most often diverge from each other.
+
+### Unparseable responses
+
+These are counted as wrong in all accuracy figures (matching `eval_state.json`).
+
+| Model | Unparseable count |
+|-------|-------------------|
+| anthropic/claude-haiku-4.5 (thinking) | 695 |
+| anthropic/claude-sonnet-4.6 (thinking) | 194 |
+| google/gemma-4-26b-a4b-it | 40 |
+| local Gemma-4 E4B Q8_0 (thinking) | 4 |
+
+Haiku produces long explanatory responses instead of a single letter far more often than the other models. Its true "wrong reasoning" rate is substantially lower than its headline accuracy suggests.

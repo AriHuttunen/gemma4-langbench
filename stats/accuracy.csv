@@ -1,0 +1,17 @@
+model,language,correct,wrong,accuracy
+anthropic_claude-haiku-4.5,eng_Latn,742,158,0.8244
+anthropic_claude-haiku-4.5,est_Latn,637,263,0.7078
+anthropic_claude-haiku-4.5,fin_Latn,685,215,0.7611
+anthropic_claude-haiku-4.5,swe_Latn,731,169,0.8122
+anthropic_claude-sonnet-4.6,eng_Latn,856,44,0.9511
+anthropic_claude-sonnet-4.6,est_Latn,811,89,0.9011
+anthropic_claude-sonnet-4.6,fin_Latn,828,72,0.9200
+anthropic_claude-sonnet-4.6,swe_Latn,805,95,0.8944
+google_gemma-4-26b-a4b-it,eng_Latn,870,30,0.9667
+google_gemma-4-26b-a4b-it,est_Latn,802,98,0.8911
+google_gemma-4-26b-a4b-it,fin_Latn,833,67,0.9256
+google_gemma-4-26b-a4b-it,swe_Latn,833,67,0.9256
+local_Gemma-4_E4B_Q8_0_think,eng_Latn,864,36,0.9600
+local_Gemma-4_E4B_Q8_0_think,est_Latn,791,109,0.8789
+local_Gemma-4_E4B_Q8_0_think,fin_Latn,830,70,0.9222
+local_Gemma-4_E4B_Q8_0_think,swe_Latn,833,67,0.9256
