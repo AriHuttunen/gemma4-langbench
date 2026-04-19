@@ -1,7 +1,7 @@
 # Belebele Evaluation Summary
 
 
-4 models × 4 languages × 900 questions = 3,600 prompts per model.
+4 models × 4 languages × 900 questions = 14,400 prompts total.
 
 
 ## Accuracy by Model and Language
@@ -53,7 +53,7 @@ Questions where the model answered English correctly but failed in ≥1 of est/f
 
 ## Model Disagreement (unique outlier per language)
 
-Questions where exactly 1 or 3 of 4 models got it right — one model stands out.
+Questions where exactly 1 or 3 of the models got it right — one model stands out.
 
 | Language | Disagreement count |
 |----------|--------------------|
@@ -64,18 +64,18 @@ Questions where exactly 1 or 3 of 4 models got it right — one model stands out
 
 ## Note: Unparseable Responses
 
-Counted as wrong in all accuracy figures above (matches eval_state.json).
+Counted as wrong in all accuracy figures above.
 
-| Model | Unparseable count |
-|-------|-------------------|
-| anthropic_claude-haiku-4.5 | 695 |
-| anthropic_claude-sonnet-4.6 | 194 |
-| google_gemma-4-26b-a4b-it | 40 |
-| local_Gemma-4_E4B_Q8_0_think | 4 |
+| Model | Unparseable count | Source |
+|-------|-------------------|--------|
+| anthropic_claude-haiku-4.5 | 695 | wrong_answers_anthropic_claude-haiku-4.5.jsonl (legacy) |
+| anthropic_claude-sonnet-4.6 | 194 | wrong_answers_anthropic_claude-sonnet-4.6.jsonl (legacy) |
+| google_gemma-4-26b-a4b-it | 40 | wrong_answers_google_gemma-4-26b-a4b-it.jsonl (legacy) |
+| local_Gemma-4_E4B_Q8_0_think | 4 | wrong_answers_local_Gemma-4_E4B_Q8_0_think.jsonl (legacy) |
 
 ## Output Files
 
-- `accuracy.csv` — per-model per-language accuracy (verified against eval_state)
+- `accuracy.csv` — per-model per-language accuracy
 - `hardest_questions.csv` — all 900 questions sorted by failure count across models×langs
 - `language_flip.csv` — questions eng-correct but non-eng-wrong, per model
 - `model_disagreement.csv` — per-question per-language which models got it right/wrong
