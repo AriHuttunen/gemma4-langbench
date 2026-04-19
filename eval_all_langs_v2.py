@@ -6,9 +6,12 @@
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
+import shutil
 import signal
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -17,6 +20,7 @@ from pathlib import Path
 from openai import AsyncOpenAI, OpenAI
 
 DATA_DIR = Path("data/belebele")
+RUNS_DIR = Path("runs")
 LABELS = ["A", "B", "C", "D"]
 
 INSTRUCTION = (
@@ -58,16 +62,67 @@ def safe_run_id(model: str, thinking: bool) -> str:
     return f"{safe}_thinking" if thinking else safe
 
 
-def state_file_for(run_id: str) -> Path:
-    return DATA_DIR / f".eval_state_{run_id}.json"
+def run_dir_for(run_id: str) -> Path:
+    return RUNS_DIR / run_id
 
 
-def log_file_for(run_id: str) -> Path:
-    return Path(f"wrong_answers_{run_id}.jsonl")
+def get_git_sha() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=2,
+        )
+        return result.stdout.strip() if result.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
 
 
-def run_log_file_for(run_id: str) -> Path:
-    return Path(f"run_log_{run_id}.log")
+def prompt_sha() -> str:
+    return hashlib.sha256(INSTRUCTION.encode()).hexdigest()[:16]
+
+
+def meta_api_kwargs(thinking: bool) -> dict:
+    """Clean parameter record for the state meta block."""
+    if thinking:
+        return {"temperature": 1, "max_tokens": 2500, "reasoning_max_tokens": 2000}
+    return {"temperature": 0, "max_tokens": 2048, "reasoning_max_tokens": 0}
+
+
+def model_api_kwargs(thinking: bool) -> dict:
+    """Full kwargs dict for the OpenAI client."""
+    if thinking:
+        return {
+            "temperature": 1,
+            "max_tokens": 2500,
+            "extra_body": {"reasoning": {"type": "enabled", "max_tokens": 2000}},
+        }
+    return {"temperature": 0, "max_tokens": 2048}
+
+
+def q_key(item: dict) -> str:
+    return f"{item['link']}|{item['question_number']}"
+
+
+def find_next_item(items: list, lang_results: dict) -> dict | None:
+    for item in items:
+        if q_key(item) not in lang_results:
+            return item
+    return None
+
+
+def derived_counts(lang_results: dict) -> dict:
+    done = len(lang_results)
+    correct = sum(1 for r in lang_results.values() if r["outcome"] == "correct")
+    errors = sum(1 for r in lang_results.values() if r["outcome"] == "api_error")
+    wrong = done - correct - errors
+    return {"done": done, "correct": correct, "wrong": wrong, "errors": errors}
+
+
+def mark_completed(state: dict, langs: list, n: int) -> None:
+    if state["meta"].get("completed_at"):
+        return
+    if all(len(state["languages"].get(lang, {})) >= n for lang in langs):
+        state["meta"]["completed_at"] = datetime.now(timezone.utc).isoformat()
 
 
 def append_log(log_path: Path, entry: dict) -> None:
@@ -106,6 +161,8 @@ def build_log_entry(
     predicted: str | None,
     raw_response: str | None,
     elapsed: float | None,
+    thinking: bool = False,
+    akm: dict | None = None,
     english_item: dict | None = None,
     error_message: str | None = None,
 ) -> dict:
@@ -114,6 +171,10 @@ def build_log_entry(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "model": model,
         "base_url": base_url,
+        "thinking": thinking,
+        "temperature": (akm or {}).get("temperature"),
+        "max_tokens": (akm or {}).get("max_tokens"),
+        "reasoning_max_tokens": (akm or {}).get("reasoning_max_tokens"),
         "language": lang,
         "dialect": item.get("dialect"),
         "link": item.get("link"),
@@ -139,14 +200,18 @@ def build_log_entry(
     return entry
 
 
-def load_state(path: Path) -> dict:
+def load_state(run_dir: Path) -> dict:
+    path = run_dir / "state.json"
     if path.exists():
         return json.loads(path.read_text())
-    return {}
+    return {"meta": {}, "languages": {}}
 
 
-def save_state(state: dict, path: Path):
-    path.write_text(json.dumps(state, indent=2) + "\n")
+def save_state(state: dict, run_dir: Path) -> None:
+    path = run_dir / "state.json"
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n")
+    os.replace(tmp, path)
 
 
 recent_times: list[float] = []
@@ -156,12 +221,11 @@ def render(
     langs: list[str],
     state: dict,
     totals: dict,
-    elapsed: float | None,
+    elapsed,
     model: str,
     thinking: bool,
     dry_run: bool = False,
 ):
-    """Render the stats table in-place."""
     lines = []
     tag = " [thinking]" if thinking else ""
     if dry_run:
@@ -175,11 +239,11 @@ def render(
     total_correct = 0
     total_total = 0
     for lang in langs:
-        s = state.get(lang, {})
-        done = s.get("done", 0)
-        correct = s.get("correct", 0)
-        wrong = s.get("wrong", 0)
-        errors = s.get("errors", 0)
+        counts = derived_counts(state["languages"].get(lang, {}))
+        done = counts["done"]
+        correct = counts["correct"]
+        wrong = counts["wrong"]
+        errors = counts["errors"]
         total = totals[lang]
         acc = f"{correct / done * 100:.1f}%" if done > 0 else "-"
         lines.append(
@@ -229,18 +293,7 @@ def render(
 render.prev_lines = 0
 
 
-def model_api_kwargs(thinking: bool) -> dict:
-    if thinking:
-        return {
-            "temperature": 1,
-            "max_tokens": 2500,
-            "extra_body": {"reasoning": {"type": "enabled", "max_tokens": 2000}},
-        }
-    return {"temperature": 0, "max_tokens": 2048}
-
-
 async def query_model(async_client, model: str, prompt: str, api_kwargs: dict):
-    """Send a single query to the model. Returns (content, reasoning_content, elapsed)."""
     t0 = time.perf_counter()
     response = await async_client.chat.completions.create(
         model=model,
@@ -254,11 +307,12 @@ async def query_model(async_client, model: str, prompt: str, api_kwargs: dict):
 
 
 def run_sequential(
-    langs, data, state, totals, sf, model, api_kwargs, thinking,
+    langs, data, state, totals, run_dir, model, api_kwargs, akm, thinking,
     base_url, api_key, log_path, eng_index, rl, dry_run,
 ):
     """Sequential round-robin for local models."""
     client = OpenAI(base_url=base_url, api_key=api_key)
+    n = max(totals.values(), default=0)
 
     stopping = False
 
@@ -273,15 +327,13 @@ def run_sequential(
         for lang in langs:
             if stopping:
                 break
-            s = state.setdefault(
-                lang, {"done": 0, "correct": 0, "wrong": 0, "errors": 0}
-            )
-            idx = s["done"]
-            if idx >= len(data[lang]):
+            lang_results = state["languages"].setdefault(lang, {})
+            item = find_next_item(data[lang], lang_results)
+            if item is None:
                 continue
 
             made_progress = True
-            item = data[lang][idx]
+            key = q_key(item)
             prompt = build_prompt(item)
             expected = LABELS[int(item["correct_answer_num"]) - 1]
 
@@ -297,61 +349,62 @@ def run_sequential(
             except Exception as e:
                 elapsed = time.perf_counter() - t0
                 print(f"\nError ({lang}): {e}", file=sys.stderr)
-                s["errors"] += 1
-                s["done"] += 1
+                lang_results[key] = {"outcome": "api_error", "predicted": None, "correct": expected, "elapsed": elapsed}
                 if not dry_run:
-                    run_log(rl, f"ERROR lang={lang} idx={idx} {e}")
+                    run_log(rl, f"ERROR lang={lang} key={key} {e}")
                     eng = eng_index.get((item.get("link"), item.get("question_number")))
-                    append_log(
-                        log_path,
-                        build_log_entry(
-                            lang, item, model, base_url,
-                            "api_error", None, None, elapsed,
-                            english_item=eng, error_message=str(e),
-                        ),
-                    )
-                    save_state(state, sf)
+                    append_log(log_path, build_log_entry(
+                        lang, item, model, base_url, "api_error",
+                        None, None, elapsed,
+                        thinking=thinking, akm=akm,
+                        english_item=eng, error_message=str(e),
+                    ))
+                    mark_completed(state, langs, n)
+                    save_state(state, run_dir)
                 render(langs, state, totals, elapsed, model, thinking, dry_run)
                 continue
 
             elapsed = time.perf_counter() - t0
-
             if predicted == expected:
-                s["correct"] += 1
+                outcome = "correct"
+            elif predicted is None:
+                outcome = "unparseable"
             else:
-                s["wrong"] += 1
-                if not dry_run:
-                    eng = eng_index.get((item.get("link"), item.get("question_number")))
-                    append_log(
-                        log_path,
-                        build_log_entry(
-                            lang, item, model, base_url,
-                            "wrong_answer" if predicted is not None else "unparseable",
-                            predicted, raw, elapsed, english_item=eng,
-                        ),
-                    )
-            s["done"] += 1
+                outcome = "wrong_answer"
+
+            lang_results[key] = {"outcome": outcome, "predicted": predicted, "correct": expected, "elapsed": elapsed}
+
+            if outcome != "correct" and not dry_run:
+                eng = eng_index.get((item.get("link"), item.get("question_number")))
+                append_log(log_path, build_log_entry(
+                    lang, item, model, base_url, outcome,
+                    predicted, raw, elapsed,
+                    thinking=thinking, akm=akm,
+                    english_item=eng,
+                ))
 
             if not dry_run:
-                save_state(state, sf)
+                mark_completed(state, langs, n)
+                save_state(state, run_dir)
             render(langs, state, totals, elapsed, model, thinking, dry_run)
 
         if not made_progress:
             break
 
     if not dry_run:
-        save_state(state, sf)
+        save_state(state, run_dir)
     if stopping:
         msg = "Stopped." if dry_run else "Stopped. Progress saved. Run again to resume."
         print(f"\n{msg}")
 
 
 async def run_parallel(
-    langs, data, state, totals, sf, model, api_kwargs, thinking,
+    langs, data, state, totals, run_dir, model, api_kwargs, akm, thinking,
     base_url, api_key, log_path, eng_index, rl, dry_run,
 ):
     """Parallel requests for cloud APIs — one request per language concurrently."""
     async_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+    n = max(totals.values(), default=0)
 
     stopping = False
 
@@ -364,42 +417,38 @@ async def run_parallel(
     while not stopping:
         pending = []
         for lang in langs:
-            s = state.setdefault(
-                lang, {"done": 0, "correct": 0, "wrong": 0, "errors": 0}
-            )
-            idx = s["done"]
-            if idx < len(data[lang]):
-                item = data[lang][idx]
+            lang_results = state["languages"].setdefault(lang, {})
+            item = find_next_item(data[lang], lang_results)
+            if item is not None:
                 prompt = build_prompt(item)
                 expected = LABELS[int(item["correct_answer_num"]) - 1]
-                pending.append((lang, idx, item, prompt, expected))
+                pending.append((lang, item, prompt, expected))
 
         if not pending:
             break
 
         tasks = [
             query_model(async_client, model, prompt, api_kwargs)
-            for _, _, _, prompt, _ in pending
+            for _, _, prompt, _ in pending
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         batch_times = []
-        for (lang, idx, item, _, expected), result in zip(pending, results):
-            s = state[lang]
+        for (lang, item, _, expected), result in zip(pending, results):
+            lang_results = state["languages"][lang]
+            key = q_key(item)
             if isinstance(result, Exception):
                 print(f"\nError ({lang}): {result}", file=sys.stderr)
-                s["errors"] += 1
+                lang_results[key] = {"outcome": "api_error", "predicted": None, "correct": expected, "elapsed": None}
                 if not dry_run:
-                    run_log(rl, f"ERROR lang={lang} idx={idx} {result}")
+                    run_log(rl, f"ERROR lang={lang} key={key} {result}")
                     eng = eng_index.get((item.get("link"), item.get("question_number")))
-                    append_log(
-                        log_path,
-                        build_log_entry(
-                            lang, item, model, base_url,
-                            "api_error", None, None, None,
-                            english_item=eng, error_message=str(result),
-                        ),
-                    )
+                    append_log(log_path, build_log_entry(
+                        lang, item, model, base_url, "api_error",
+                        None, None, None,
+                        thinking=thinking, akm=akm,
+                        english_item=eng, error_message=str(result),
+                    ))
             else:
                 raw, reasoning, elapsed = result
                 batch_times.append(elapsed)
@@ -407,27 +456,30 @@ async def run_parallel(
                     run_log(rl, f"RESPONSE lang={lang} reasoning_chars={len(reasoning) if reasoning else 0}")
                 predicted = parse_answer(raw)
                 if predicted == expected:
-                    s["correct"] += 1
+                    outcome = "correct"
+                elif predicted is None:
+                    outcome = "unparseable"
                 else:
-                    s["wrong"] += 1
-                    if not dry_run:
-                        eng = eng_index.get((item.get("link"), item.get("question_number")))
-                        append_log(
-                            log_path,
-                            build_log_entry(
-                                lang, item, model, base_url,
-                                "wrong_answer" if predicted is not None else "unparseable",
-                                predicted, raw, elapsed, english_item=eng,
-                            ),
-                        )
-            s["done"] += 1
+                    outcome = "wrong_answer"
+
+                lang_results[key] = {"outcome": outcome, "predicted": predicted, "correct": expected, "elapsed": elapsed}
+
+                if outcome != "correct" and not dry_run:
+                    eng = eng_index.get((item.get("link"), item.get("question_number")))
+                    append_log(log_path, build_log_entry(
+                        lang, item, model, base_url, outcome,
+                        predicted, raw, elapsed,
+                        thinking=thinking, akm=akm,
+                        english_item=eng,
+                    ))
 
         if not dry_run:
-            save_state(state, sf)
+            mark_completed(state, langs, n)
+            save_state(state, run_dir)
         render(langs, state, totals, batch_times, model, thinking, dry_run)
 
     if not dry_run:
-        save_state(state, sf)
+        save_state(state, run_dir)
     if stopping:
         msg = "Stopped." if dry_run else "Stopped. Progress saved. Run again to resume."
         print(f"\n{msg}")
@@ -470,15 +522,14 @@ examples:
     parser.add_argument(
         "-n", type=int, default=900, help="Max questions per language (default: 900)"
     )
-    parser.add_argument("--reset", action="store_true", help="Reset saved progress")
+    parser.add_argument("--reset", action="store_true", help="Wipe runs/<run_id>/ and start fresh")
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Run evaluation without writing to state files or logs",
+        help="Run evaluation without writing any files",
     )
     args = parser.parse_args()
 
-    # Resolve connection settings
     if args.local:
         model = "loaded-model"
         base_url = "http://localhost:1234/v1"
@@ -494,20 +545,19 @@ examples:
         parallel = True
 
     api_kwargs = model_api_kwargs(args.thinking)
+    akm = meta_api_kwargs(args.thinking)
 
     run_id = safe_run_id(model, args.thinking)
-    sf = state_file_for(run_id)
-    log_path = log_file_for(run_id)
-    rl = run_log_file_for(run_id)
+    run_dir = run_dir_for(run_id)
+    log_path = run_dir / "wrong_answers.jsonl"
+    rl = run_dir / "run.log"
 
-    # Discover languages
     lang_files = sorted(DATA_DIR.glob("*.jsonl"))
     langs = [f.stem for f in lang_files]
     if not langs:
         print("No datasets found in data/belebele/")
         return
 
-    # Load all questions
     data: dict[str, list] = {}
     totals: dict[str, int] = {}
     for lang, path in zip(langs, lang_files):
@@ -516,34 +566,55 @@ examples:
         data[lang] = items[: args.n]
         totals[lang] = len(data[lang])
 
-    # Build English lookup keyed by (link, question_number) for log entries
     eng_index: dict[tuple, dict] = {
         (item.get("link"), item.get("question_number")): item
         for item in data.get("eng_Latn", [])
     }
 
-    # Load or reset state
-    if args.reset:
-        state = {}
-        if log_path.exists():
-            log_path.unlink()
-    elif args.dry_run:
-        state = {}
-    else:
-        state = load_state(sf)
+    if args.reset and run_dir.exists():
+        shutil.rmtree(run_dir)
 
-    # Print startup summary
+    if not args.dry_run:
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.dry_run or args.reset:
+        state: dict = {"meta": {}, "languages": {}}
+    else:
+        state = load_state(run_dir)
+
+    now = datetime.now(timezone.utc).isoformat()
+    if not state["meta"]:
+        state["meta"] = {
+            "model": model,
+            "base_url": base_url,
+            "thinking": args.thinking,
+            "api_kwargs": akm,
+            "n_per_language": args.n,
+            "prompt_sha256": prompt_sha(),
+            "git_sha": get_git_sha(),
+            "started_at": now,
+            "updated_at": now,
+            "completed_at": None,
+        }
+    else:
+        state["meta"].update({
+            "model": model,
+            "base_url": base_url,
+            "thinking": args.thinking,
+            "api_kwargs": akm,
+            "n_per_language": args.n,
+            "updated_at": now,
+        })
+
     print(f"Model:    {model}")
     print(f"Source:   {base_url}")
     print(f"Thinking: {'on' if args.thinking else 'off'}")
     print(f"Mode:     {'parallel (all languages at once)' if parallel else 'sequential (one language at a time)'}")
     print(f"Per lang: {args.n} questions")
     if args.dry_run:
-        print("Files:    none (dry run — no state or logs written)")
+        print("Files:    none (dry run)")
     else:
-        print(f"State:    {sf}")
-        print(f"Log:      {log_path}")
-        print(f"Run log:  {rl}")
+        print(f"Dir:      {run_dir}/")
     print()
 
     if not args.dry_run:
@@ -551,8 +622,10 @@ examples:
 
     render(langs, state, totals, None, model, args.thinking, args.dry_run)
 
-    runner_args = (langs, data, state, totals, sf, model, api_kwargs, args.thinking,
-                   base_url, api_key, log_path, eng_index, rl, args.dry_run)
+    runner_args = (
+        langs, data, state, totals, run_dir, model, api_kwargs, akm, args.thinking,
+        base_url, api_key, log_path, eng_index, rl, args.dry_run,
+    )
 
     if parallel:
         asyncio.run(run_parallel(*runner_args))

@@ -92,25 +92,64 @@ uv run eval_all_langs_v2.py --model google/gemma-4-26b-a4b-it --dry-run -n 3
 uv run eval_all_langs_v2.py --model google/gemma-4-26b-a4b-it --thinking --dry-run -n 3
 ```
 
-## Wrong-answer log
+## Run outputs
 
-`eval_all_langs_v2.py` (and `eval_all_langs.py`) appends a JSONL record to `./wrong_answers_<run_id>.jsonl` for every question the model gets wrong (including unparseable responses and API errors). Each record contains enough information to reproduce the failure without re-running the model:
+Each run writes all its files to `runs/<run_id>/`:
+
+```
+runs/
+  <run_id>/
+    state.json          — per-question results + run metadata (source of truth)
+    wrong_answers.jsonl — detailed record for every non-correct answer
+    run.log             — lifecycle timestamps
+```
+
+`<run_id>` is the model name with `/` replaced by `_`, with `_thinking` appended when thinking is on (e.g. `anthropic_claude-sonnet-4.6_thinking`). `--reset` wipes the entire `runs/<run_id>/` directory before starting fresh.
+
+### state.json
+
+```json
+{
+  "meta": {
+    "model": "anthropic/claude-sonnet-4.6",
+    "base_url": "https://openrouter.ai/api/v1",
+    "thinking": true,
+    "api_kwargs": {"temperature": 1, "max_tokens": 2500, "reasoning_max_tokens": 2000},
+    "n_per_language": 900,
+    "prompt_sha256": "…",
+    "git_sha": "3df7690",
+    "started_at": "2026-04-19T09:00:00+00:00",
+    "updated_at": "2026-04-19T09:45:12+00:00",
+    "completed_at": null
+  },
+  "languages": {
+    "eng_Latn": {
+      "https://…/article|1": {"outcome": "correct",      "predicted": "A", "correct": "A", "elapsed": 0.42},
+      "https://…/article|2": {"outcome": "wrong_answer", "predicted": "C", "correct": "A", "elapsed": 0.51}
+    }
+  }
+}
+```
+
+Every question is recorded — correct ones included. Key format is `"{link}|{question_number}"`. `outcome` is `correct`, `wrong_answer`, `unparseable`, or `api_error`. State is written atomically after each question so Ctrl-C is safe; resume picks up from the dict lookup.
+
+### wrong_answers.jsonl
+
+Appended for every non-correct outcome. Each record is self-describing:
 
 | Field | Description |
 |---|---|
 | `timestamp` | UTC time of the call |
 | `model` / `base_url` | Exact model identifier and API endpoint |
+| `thinking` / `temperature` / `max_tokens` / `reasoning_max_tokens` | Exact parameters used |
 | `language` / `dialect` | Language file stem (e.g. `fin_Latn`) and Belebele dialect tag |
-| `link` | Source article URL |
-| `question_number` | Question index within the article (stable cross-language ID when combined with `link`) |
+| `link` / `question_number` | Stable cross-language question ID |
 | `error_type` | `wrong_answer`, `unparseable`, or `api_error` |
 | `correct_label` / `correct_text` | The right answer letter and its full text |
 | `predicted_label` / `raw_response` | What the model returned |
 | `passage` / `question` / `choices` | Full question content in the tested language |
-| `english` | The same passage, question, and choices in English (omitted when language is `eng_Latn`) |
+| `english` | Same content in English (omitted when language is `eng_Latn`) |
 | `elapsed_seconds` | Latency for this call |
-
-The file is append-only and safe to interrupt — progress is tracked separately in `.eval_state_<model>.json`. Running with `--reset` deletes both files before starting fresh.
 
 ## Results
 
@@ -216,7 +255,7 @@ Yes, haiku with thinking performed worse.
 
 ## Analysis
 
-`analyze_wrong_answers.py` joins all `wrong_answers_*.jsonl` logs with the Belebele source data and produces per-question statistics. Run with:
+`analyze_wrong_answers.py` joins all run data with the Belebele source data and produces per-question statistics. It reads from `runs/*/state.json` (new format) with automatic fallback to legacy `wrong_answers_*.jsonl` files at the repo root. Run with:
 
 ```bash
 uv run analyze_wrong_answers.py

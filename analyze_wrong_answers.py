@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Analyze wrong_answers_*.jsonl logs, joining with Belebele source data.
+"""Analyze evaluation results, joining with Belebele source data.
+
+Discovers runs from two locations (prefers new format):
+  runs/<run_id>/state.json       — new per-question format (eval_all_langs_v2.py ≥ v3)
+  wrong_answers_<run_id>.jsonl   — legacy root-level JSONL logs (old runs)
 
 Outputs to stats/:
-  accuracy.csv            — per-model per-language accuracy (asserted vs eval_state)
+  accuracy.csv            — per-model per-language accuracy
   hardest_questions.csv   — 900 questions ranked by total failure count across models × langs
   language_flip.csv       — questions a model got right in English but wrong in est/fin/swe
   model_disagreement.csv  — per lang: which models got each question right vs wrong
@@ -18,11 +22,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent
 DATA_DIR = REPO_ROOT / "data" / "belebele"
+RUNS_DIR = REPO_ROOT / "runs"
 STATS_DIR = REPO_ROOT / "stats"
 LANGUAGES = ["eng_Latn", "est_Latn", "fin_Latn", "swe_Latn"]
 LANG_SHORT = {"eng_Latn": "eng", "est_Latn": "est", "fin_Latn": "fin", "swe_Latn": "swe"}
 
-# wrong_answers filename stem → eval_state key (only needed where they differ)
+# Legacy mapping: wrong_answers filename stem → eval_state key
 EVAL_STATE_MAP = {
     "local_Gemma-4_E4B_Q8_0_think": "loaded-model",
 }
@@ -54,28 +59,47 @@ def load_belebele():
     return qdata, reverse_idx
 
 
-def load_wrong_answers(reverse_idx):
-    """Return (outcome, wrong_counts, model_ids).
+def load_all_runs(reverse_idx):
+    """Discover and load all runs. New state.json preferred over legacy JSONL.
 
-    outcome[(link, q_no)][(model_id, lang)] = error_type string
-    wrong_counts[model_id][lang][error_type] = int
-    model_ids = list of model_id strings (from filenames, in sorted order)
-
-    question_number is read directly from the log when present (new logs);
-    falls back to reverse lookup by question text for old logs that lack it.
+    Returns (outcome, wrong_counts, model_ids, sources).
+      outcome[(link, q_no)][(model_id, lang)] = error_type (non-correct records only)
+      wrong_counts[model_id][lang][error_type] = int
+      sources[model_id] = human-readable source string
     """
     outcome = defaultdict(dict)
     wrong_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    sources = {}
 
-    files = sorted(glob.glob(str(REPO_ROOT / "wrong_answers_*.jsonl")))
-    if not files:
-        print("ERROR: no wrong_answers_*.jsonl files found", file=sys.stderr)
-        sys.exit(1)
+    # --- New-format runs: runs/*/state.json ---
+    if RUNS_DIR.exists():
+        for state_path in sorted(RUNS_DIR.glob("*/state.json")):
+            model_id = state_path.parent.name
+            with open(state_path) as f:
+                state = json.load(f)
+            if "meta" not in state or "languages" not in state:
+                continue
+            for lang, lang_results in state["languages"].items():
+                if lang not in LANGUAGES:
+                    continue
+                for key, rec in lang_results.items():
+                    oc = rec.get("outcome", "")
+                    if oc == "correct":
+                        continue
+                    link, q_no_str = key.rsplit("|", 1)
+                    q_no = int(q_no_str)
+                    outcome[(link, q_no)][(model_id, lang)] = oc
+                    wrong_counts[model_id][lang][oc] += 1
+            sources[model_id] = f"runs/{model_id}/state.json"
 
-    model_ids = [Path(f).stem[len("wrong_answers_"):] for f in files]
+    # --- Legacy runs: wrong_answers_*.jsonl at repo root ---
+    legacy_files = sorted(glob.glob(str(REPO_ROOT / "wrong_answers_*.jsonl")))
     unmatched = []
-
-    for fpath, model_id in zip(files, model_ids):
+    for fpath in legacy_files:
+        model_id = Path(fpath).stem[len("wrong_answers_"):]
+        if model_id in sources:
+            continue  # already loaded from state.json
+        sources[model_id] = f"wrong_answers_{model_id}.jsonl (legacy)"
         with open(fpath) as f:
             for lineno, line in enumerate(f, 1):
                 r = json.loads(line)
@@ -84,7 +108,6 @@ def load_wrong_answers(reverse_idx):
                     continue
                 link = r["link"]
                 error_type = r["error_type"]
-
                 q_no = r.get("question_number")
                 if q_no is not None:
                     q_no = int(q_no)
@@ -96,29 +119,33 @@ def load_wrong_answers(reverse_idx):
                 if q_no is None:
                     unmatched.append((fpath, lineno, lang, link, r["question"][:60]))
                     continue
-
                 outcome[(link, q_no)][(model_id, lang)] = error_type
                 wrong_counts[model_id][lang][error_type] += 1
 
     if unmatched:
-        print(f"WARNING: {len(unmatched)} wrong-answer records could not be matched:", file=sys.stderr)
+        print(f"WARNING: {len(unmatched)} legacy records could not be matched:", file=sys.stderr)
         for u in unmatched[:5]:
             print(f"  {u}", file=sys.stderr)
 
-    return outcome, wrong_counts, model_ids
+    if not sources:
+        print("ERROR: no run data found. Expected runs/*/state.json or wrong_answers_*.jsonl", file=sys.stderr)
+        sys.exit(1)
+
+    model_ids = sorted(sources.keys())
+    return outcome, wrong_counts, model_ids, sources
 
 
-def load_eval_states(model_ids):
-    """Return dict[model_id][lang] = {done, correct, wrong, errors}."""
+def load_legacy_eval_states(model_ids, sources):
+    """Load old-format eval_state files for legacy-JSONL-sourced models only."""
     states = {}
     for model_id in model_ids:
+        if "legacy" not in sources.get(model_id, ""):
+            continue
         eval_key = EVAL_STATE_MAP.get(model_id, model_id)
         path = DATA_DIR / f".eval_state_{eval_key}.json"
         if path.exists():
             with open(path) as f:
                 states[model_id] = json.load(f)
-        else:
-            print(f"WARNING: no eval_state for model '{model_id}' (tried {path})", file=sys.stderr)
     return states
 
 
@@ -134,14 +161,15 @@ def main():
     all_keys = sorted(qdata.keys())
     assert len(all_keys) == 900, f"Expected 900 questions, got {len(all_keys)}"
 
-    print("Loading wrong-answer logs...")
-    outcome, wrong_counts, model_ids = load_wrong_answers(reverse_idx)
-    print(f"  Models: {model_ids}")
+    print("Loading run data...")
+    outcome, wrong_counts, model_ids, sources = load_all_runs(reverse_idx)
+    for mid in model_ids:
+        print(f"  {mid}: {sources[mid]}")
 
-    eval_states = load_eval_states(model_ids)
+    eval_states = load_legacy_eval_states(model_ids, sources)
 
     # -------------------------------------------------------------------------
-    # 1. Accuracy CSV (with assertion vs eval_state)
+    # 1. Accuracy CSV
     # -------------------------------------------------------------------------
     print("Writing accuracy.csv...")
     acc_rows = []
@@ -208,7 +236,7 @@ def main():
     for model_id in model_ids:
         for (link, q_no) in all_keys:
             if is_wrong(outcome, link, q_no, model_id, "eng_Latn"):
-                continue  # only interested where English was correct
+                continue
             wrong_langs = [l for l in non_eng if is_wrong(outcome, link, q_no, model_id, l)]
             if not wrong_langs:
                 continue
@@ -273,12 +301,13 @@ def main():
     lines = [
         "# Belebele Evaluation Summary\n",
         "",
-        "4 models × 4 languages × 900 questions = 3,600 prompts per model.\n",
+        f"{len(model_ids)} models × {len(LANGUAGES)} languages × 900 questions "
+        f"= {len(model_ids) * len(LANGUAGES) * 900:,} prompts total.\n",
         "",
         "## Accuracy by Model and Language",
         "",
-        "| Model | eng_Latn | est_Latn | fin_Latn | swe_Latn |",
-        "|-------|----------|----------|----------|----------|",
+        "| Model | " + " | ".join(LANGUAGES) + " |",
+        "|-------|" + "|".join("----------" for _ in LANGUAGES) + "|",
     ]
     for mid in model_ids:
         cells = []
@@ -291,7 +320,8 @@ def main():
         "",
         "## Top 20 Hardest Questions (across all models × languages)",
         "",
-        "n_wrong_total is out of 16 (4 models × 4 languages).",
+        f"n_wrong_total is out of {len(model_ids) * len(LANGUAGES)} "
+        f"({len(model_ids)} models × {len(LANGUAGES)} languages).",
         "",
         "| # | q_no | n_wrong | eng | est | fin | swe | Question | Link |",
         "|---|------|---------|-----|-----|-----|-----|----------|------|",
@@ -321,7 +351,7 @@ def main():
         "",
         "## Model Disagreement (unique outlier per language)",
         "",
-        "Questions where exactly 1 or 3 of 4 models got it right — one model stands out.",
+        "Questions where exactly 1 or 3 of the models got it right — one model stands out.",
         "",
         "| Language | Disagreement count |",
         "|----------|--------------------|",
@@ -333,19 +363,19 @@ def main():
         "",
         "## Note: Unparseable Responses",
         "",
-        "Counted as wrong in all accuracy figures above (matches eval_state.json).",
+        "Counted as wrong in all accuracy figures above.",
         "",
-        "| Model | Unparseable count |",
-        "|-------|-------------------|",
+        "| Model | Unparseable count | Source |",
+        "|-------|-------------------|--------|",
     ]
     for mid in model_ids:
-        lines.append(f"| {mid} | {unparse_by_model[mid]} |")
+        lines.append(f"| {mid} | {unparse_by_model[mid]} | {sources[mid]} |")
 
     lines += [
         "",
         "## Output Files",
         "",
-        "- `accuracy.csv` — per-model per-language accuracy (verified against eval_state)",
+        "- `accuracy.csv` — per-model per-language accuracy",
         "- `hardest_questions.csv` — all 900 questions sorted by failure count across models×langs",
         "- `language_flip.csv` — questions eng-correct but non-eng-wrong, per model",
         "- `model_disagreement.csv` — per-question per-language which models got it right/wrong",
